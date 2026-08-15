@@ -21,11 +21,13 @@ encrypted end to end.
 
 </div>
 
+
+
+<img width="1483" height="762" alt="image" src="https://github.com/user-attachments/assets/5525f04b-a0ba-4435-95bf-b3dfdf461de4" />
+
 ---
 
 ```
-<img width="1483" height="762" alt="image" src="https://github.com/user-attachments/assets/5525f04b-a0ba-4435-95bf-b3dfdf461de4" />
-
 
 *Not a mockup — a real frame captured from two nodes talking over loopback.*
 
