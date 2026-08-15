@@ -8,6 +8,7 @@ Runs on your machine, talks to nobody by default, and admits only peers whose
 Ed25519 public key you have explicitly added. Everything after the handshake is
 encrypted end to end.
 
+[![release](https://github.com/Ashutosh0x/ircnode/actions/workflows/release.yml/badge.svg)](https://github.com/Ashutosh0x/ircnode/actions/workflows/release.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-native%20type%20stripping-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#zero-dependencies-on-purpose)
@@ -45,6 +46,31 @@ encrypted end to end.
 *Not a mockup — a real frame captured from two nodes talking over loopback.*
 
 ---
+
+## Install
+
+**From source** — no runtime dependencies, nothing to compile, and the code you
+read is the code that runs:
+
+```bash
+git clone https://github.com/Ashutosh0x/ircnode
+cd ircnode && npm install && npm test
+node src/cli.ts keygen
+```
+
+**Prebuilt binaries** are attached to each
+[release](https://github.com/Ashutosh0x/ircnode/releases) for Windows, Linux and
+macOS (Intel and Apple Silicon). They are **unsigned** — macOS Gatekeeper and
+Windows SmartScreen will object, and that warning is accurate. Verify the
+checksum, and check the binary reports the commit you expect:
+
+```bash
+sha256sum -c SHA256SUMS     # shasum -a 256 -c on macOS
+./ircnode version           # prints the exact commit it was built from
+```
+
+If you would rather not run an unsigned binary, don't — run it from source. The
+binary is a convenience, not the recommended path.
 
 ## Quick start
 

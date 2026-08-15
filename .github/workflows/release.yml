@@ -1,0 +1,232 @@
+# Build ircnode into a single executable for Windows, Linux and macOS.
+#
+# ── The gate ────────────────────────────────────────────────────────────────
+#
+# `test` runs first and everything else needs it. A binary that ships without
+# the 127 checks having passed is worse than no binary: it looks official, and
+# for a tool whose entire value is a closed trust boundary, "it built" is not
+# evidence that the boundary holds.
+#
+# ── What a user can verify ──────────────────────────────────────────────────
+#
+# The binary is a derived artifact — reading it tells you far less than reading
+# src/ does. So provenance is published instead of relying on readability: the
+# commit is compiled into the binary (`ircnode version`), SHA256SUMS is
+# generated in CI from the artifacts themselves, and releases are cut only from
+# a tag. Anyone who wants the real guarantee should clone and run `npm test`.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────── test ──
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The security core is pure computation, but the end-to-end suite opens
+        # real sockets — and socket behaviour is exactly where platforms differ.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No `npm ci`: there is no lockfile to honour for runtime code because
+      # there are no runtime dependencies. Dev tools are installed only where
+      # they are needed.
+      - name: Install dev tooling
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+  # ──────────────────────────────────────────────────────────── build ──
+  build:
+    name: build ${{ matrix.label }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            target: linux
+          - os: windows-latest
+            label: windows-x64
+            target: win32
+          - os: macos-latest
+            label: macos-arm64
+            target: darwin
+          - os: macos-13
+            label: macos-x64
+            target: darwin
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build compiles the commit hash into the binary, so the full
+          # history has to be present for `git rev-parse` to mean anything.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install build tooling
+        run: npm install --no-audit --no-fund
+
+      - name: Build single executable
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: node scripts/build.mjs
+
+      - name: Read version
+        id: meta
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # ── package: linux ──
+      - name: Package (linux tar.gz)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp README.md LICENSE build/
+          tar -czf "dist/ircnode-${{ steps.meta.outputs.version }}-${{ matrix.label }}.tar.gz" \
+            -C build ircnode README.md LICENSE
+
+      # ── package: windows ──
+      # Shipped as a zip rather than a bare .exe: browsers and mail gateways
+      # treat a downloaded loose .exe far more harshly, and the archive keeps
+      # the licence and README with the binary.
+      - name: Package (windows zip)
+        if: matrix.target == 'win32'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item README.md, LICENSE build/
+          Compress-Archive -Path build/ircnode.exe, build/README.md, build/LICENSE `
+            -DestinationPath "dist/ircnode-${{ steps.meta.outputs.version }}-${{ matrix.label }}.zip"
+
+      # ── package: macOS ──
+      # hdiutil ships with macOS, so no third-party packaging tool is involved.
+      # UDZO is the compressed read-only format users expect from a .dmg.
+      - name: Package (macOS dmg)
+        if: matrix.target == 'darwin'
+        shell: bash
+        run: |
+          mkdir -p dist staging
+          cp build/ircnode staging/
+          cp README.md LICENSE staging/
+          hdiutil create \
+            -volname "ircnode ${{ steps.meta.outputs.version }}" \
+            -srcfolder staging \
+            -ov -format UDZO \
+            "dist/ircnode-${{ steps.meta.outputs.version }}-${{ matrix.label }}.dmg"
+
+      # Per-artifact checksum, computed on the machine that produced it.
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          if command -v sha256sum >/dev/null; then sha256sum * > "SHA256-${{ matrix.label }}.txt";
+          else shasum -a 256 * > "SHA256-${{ matrix.label }}.txt"; fi
+          cat "SHA256-${{ matrix.label }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ircnode-${{ matrix.label }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ────────────────────────────────────────────────────────── release ──
+  release:
+    name: release
+    # Tags only. A release cut from a moving branch cannot be pointed at later.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect and checksum
+        run: |
+          mkdir -p release
+          find artifacts -type f ! -name 'SHA256-*' -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          echo "--- release contents ---"
+          ls -lh
+          echo "--- SHA256SUMS ---"
+          cat SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          body: |
+            ## Verify before you run it
+
+            ```bash
+            sha256sum -c SHA256SUMS        # Linux
+            shasum -a 256 -c SHA256SUMS    # macOS
+            ```
+
+            The binary reports the commit it was built from:
+
+            ```bash
+            ./ircnode version
+            ```
+
+            ### These builds are unsigned
+
+            macOS Gatekeeper and Windows SmartScreen will both object, because
+            there is no Developer ID or Authenticode certificate behind them.
+            That warning is accurate — treat it as information, not an
+            obstacle to click through blindly.
+
+            If you would rather not run an unsigned binary, don't: clone the
+            repository and run it from source. It has no runtime dependencies
+            and the test suite is the same one this release was gated on.
+
+            ```bash
+            git clone https://github.com/Ashutosh0x/ircnode
+            cd ircnode && npm install && npm test
+            node src/cli.ts keygen
+            ```
+
+            ### Trust the node, not the download
+
+            Verifying this artifact tells you it came from this repository. It
+            says nothing about who you then connect to. Peer identity is
+            established separately — exchange public keys out of band, and an
+            unauthorised key cannot open a session regardless of how it got
+            the software.

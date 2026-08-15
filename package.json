@@ -17,10 +17,22 @@
     "connect": "node src/cli.ts connect",
     "peers": "node src/cli.ts peers",
     "test": "node test/run.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "version": "node src/cli.ts version"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
     "typescript": "^5.7.2"
-  }
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "test/",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ]
 }

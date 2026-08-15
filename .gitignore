@@ -12,3 +12,9 @@ config/allowed-peers.json
 
 .DS_Store
 *.log
+
+# Build output. The binary is a derived artifact — it belongs on a release,
+# not in the history.
+build/
+dist/
+staging/

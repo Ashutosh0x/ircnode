@@ -22,6 +22,21 @@ import { Tui } from './ui/tui.ts';
 
 const CONFIG_DIR = resolve(process.env['IRCNODE_CONFIG'] ?? 'config');
 
+/* Build stamps, replaced by esbuild's --define when compiled into a binary.
+   Read through `typeof` because running from source they do not exist at all,
+   and a bare reference would be a ReferenceError before main() is reached.
+
+   The commit matters more than the version: a binary that cannot be traced
+   back to a specific source tree is one nobody can verify, and "0.1.0" is
+   true of every build ever made from this tag. */
+declare const __IRCNODE_VERSION__: string;
+declare const __IRCNODE_COMMIT__: string;
+
+const BUILD = {
+    version: typeof __IRCNODE_VERSION__ === 'string' ? __IRCNODE_VERSION__ : 'dev',
+    commit: typeof __IRCNODE_COMMIT__ === 'string' ? __IRCNODE_COMMIT__ : 'source',
+};
+
 function bootstrap() {
     mkdirSync(CONFIG_DIR, { recursive: true });
     const { identity, created } = loadOrCreateIdentity(CONFIG_DIR);
@@ -77,6 +92,19 @@ function cmdKeygen(): void {
 function cmdId(): void {
     const { identity } = bootstrap();
     console.log(publicKeyToHex(identity.publicKey));
+}
+
+function cmdVersion(): void {
+    console.log(`ircnode ${BUILD.version}`);
+    console.log(`  commit    ${BUILD.commit}`);
+    console.log(`  runtime   node ${process.versions.node} (${process.platform}-${process.arch})`);
+    console.log(`  handshake SIGMA / Ed25519 / X25519`);
+    console.log(`  transport ChaCha20-Poly1305`);
+    if (BUILD.commit === 'source') {
+        console.log('\nRunning from source — this is the code you can read in src/.');
+    } else {
+        console.log(`\nVerify this build: https://github.com/Ashutosh0x/ircnode/commit/${BUILD.commit}`);
+    }
 }
 
 function cmdPeers(positional: string[]): void {
@@ -259,6 +287,7 @@ function usage(): void {
 
   keygen                            create this node's identity
   id                                print the public key to share with peers
+  version                           build, commit and cipher suite
   peers [list]                      list authorised peers
   peers add <pubkey-hex> [name]     authorise a peer
   peers remove <pubkey|node-id>     revoke a peer
@@ -277,6 +306,10 @@ async function main(): Promise<void> {
     switch (command) {
         case 'keygen': return cmdKeygen();
         case 'id': return cmdId();
+        case 'version':
+        case '--version':
+        case '-v':
+            return cmdVersion();
         case 'peers': return cmdPeers(positional.slice(1));
         case 'serve': return cmdServe(flags);
         case 'connect':
