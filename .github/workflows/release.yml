@@ -3,7 +3,7 @@
 # ── The gate ────────────────────────────────────────────────────────────────
 #
 # `test` runs first and everything else needs it. A binary that ships without
-# the 127 checks having passed is worse than no binary: it looks official, and
+# the 148 checks having passed is worse than no binary: it looks official, and
 # for a tool whose entire value is a closed trust boundary, "it built" is not
 # evidence that the boundary holds.
 #

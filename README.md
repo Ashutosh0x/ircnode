@@ -12,7 +12,8 @@ encrypted end to end.
 [![Node.js](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-native%20type%20stripping-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#zero-dependencies-on-purpose)
-[![Tests](https://img.shields.io/badge/tests-127%20passing-brightgreen)](#verified-not-asserted)
+[![Tests](https://img.shields.io/badge/tests-148%20passing-brightgreen)](#verified-not-asserted)
+[![Tor](https://img.shields.io/badge/transport-Tor%20%2F%20SOCKS5-7D4698?logo=torbrowser&logoColor=white)](#reaching-a-peer-on-another-network)
 [![Ed25519](https://img.shields.io/badge/identity-Ed25519-6E4AFF)](#how-a-connection-is-established)
 [![X25519](https://img.shields.io/badge/forward%20secrecy-X25519-6E4AFF)](#how-a-connection-is-established)
 [![ChaCha20-Poly1305](https://img.shields.io/badge/AEAD-ChaCha20--Poly1305-6E4AFF)](#after-the-handshake)
@@ -23,13 +24,9 @@ encrypted end to end.
 
 
 
-<img width="1483" height="762" alt="image" src="https://github.com/user-attachments/assets/5525f04b-a0ba-4435-95bf-b3dfdf461de4" />
+<img width="1483" height="762" alt="Two ircnode peers connected over an authenticated, encrypted link" src="https://github.com/user-attachments/assets/5525f04b-a0ba-4435-95bf-b3dfdf461de4" />
 
----
-
-```
-
-*Not a mockup — a real frame captured from two nodes talking over loopback.*
+*Two nodes on one machine, mutually authenticated. Not a mockup.*
 
 ---
 
@@ -259,9 +256,10 @@ build step.
 ```console
 $ npm test
 PASS  crypto.test.ts       93 checks
+PASS  socks5.test.ts       21 checks
 PASS  e2e.test.ts          34 checks
 
-2 suites, 127 checks, 0 failed
+3 suites, 148 checks, 0 failed
 ```
 
 Most are **negative**. A handshake that works between two honest parties proves
@@ -275,6 +273,11 @@ very little; what matters is that it *fails* correctly:
 - a replayed or reordered frame is refused
 - CRLF in any IRC parameter is refused — *message injection*
 - a hostile length prefix is refused before anything is allocated
+- a proxy demanding authentication with no credentials configured is refused
+- a proxy that accepts the connection and then says nothing times out, promptly,
+  rather than hanging the dial
+- the `.onion` is handed to the proxy as a **name**, never resolved locally —
+  *DNS leak*
 
 The wire was checked directly, by tapping every byte handed to the kernel:
 
@@ -317,11 +320,12 @@ captured 617 bytes in 8 writes
 | `src/protocol/message.ts` | IRC grammar with IRCv3 tags, injection-safe |
 | `src/net/link.ts` | one authenticated connection |
 | `src/net/node.ts` | listener, dialler, channels |
+| `src/net/socks5.ts` | outbound dialling through Tor or any SOCKS5 proxy |
 | `src/ui/tui.ts` | the terminal interface |
 | `src/cli.ts` | entry point |
 
 ```bash
-npm test          # 127 checks, no network required for the crypto suite
+npm test          # 148 checks, no network required for the crypto suite
 npm run typecheck # tsc --noEmit; nothing is emitted, ever
 ```
 
