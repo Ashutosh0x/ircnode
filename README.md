@@ -24,24 +24,8 @@ encrypted end to end.
 ---
 
 ```
- SECURE IRC NODE │ node 1cb35244…0638 │ ● LISTENING 127.0.0.1:39811 │ acl STRICT (1 authorised)
-────────────────────────────────────────────────────────────────────────────────────────────────
- CHANNELS                         │ 17:07:25 SYSTEM  listening on 127.0.0.1:39811 — 1 authorised
-  ▸ #private-p2p                  │ 17:07:25 AUTH_OK bob [d8809310] verified — inbound
-    #ops                          │ 17:07:25 SYSTEM  bob joined #private-p2p
-                                  │ 17:07:28 <alice> hello bob, this link is end-to-end encrypted
- PEERS (1)                        │ 17:07:29 <bob>   hello alice, confirmed on my side
-  ✔ bob ←                         │ 17:07:33 SYSTEM  joined #ops
-    d8809310c233…                 │
- SECURITY                         │
-  allowlist  enforced             │
-  handshake  SIGMA                │
-  cipher     ChaCha20             │
-  forward sec X25519              │
-────────────────────────────────────────────────────────────────────────────────────────────────
- [#private-p2p]
- ^C quit │ /help commands │ /join #ch │ /peers │ E2E ChaCha20-Poly1305 │ 1 peer(s) online
-```
+<img width="1483" height="762" alt="image" src="https://github.com/user-attachments/assets/5525f04b-a0ba-4435-95bf-b3dfdf461de4" />
+
 
 *Not a mockup — a real frame captured from two nodes talking over loopback.*
 
