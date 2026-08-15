@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import { loadOrCreateIdentity, PeerList, identityKeyPath } from './acl/peers.ts';
 import { publicKeyToHex } from './crypto/identity.ts';
 import { IrcNode, DEFAULT_HOST, DEFAULT_PORT } from './net/node.ts';
+import { parseProxy, DEFAULT_TOR_SOCKS_PORT } from './net/socks5.ts';
 import { Tui } from './ui/tui.ts';
 
 const CONFIG_DIR = resolve(process.env['IRCNODE_CONFIG'] ?? 'config');
@@ -145,10 +146,22 @@ async function cmdServe(flags: Record<string, string>): Promise<void> {
     const port = Number(flags['port'] ?? DEFAULT_PORT);
     const host = flags['host'] ?? DEFAULT_HOST;
 
-    const node = new IrcNode({ identity, peers, ...(flags['nick'] ? { nickname: flags['nick'] } : {}) });
+    /* --tor is shorthand for --proxy 127.0.0.1:9050, because that is the
+       address in every Tor default configuration and asking people to
+       remember a port number is a way to make a feature go unused. */
+    const proxyFlag = flags['proxy'] ?? (flags['tor'] ? `127.0.0.1:${DEFAULT_TOR_SOCKS_PORT}` : null);
+    const proxy = proxyFlag ? parseProxy(proxyFlag) : null;
+
+    const node = new IrcNode({
+        identity,
+        peers,
+        ...(flags['nick'] ? { nickname: flags['nick'] } : {}),
+        ...(proxy ? { proxy } : {}),
+    });
     const tui = new Tui(node);
 
     tui.system(`node ${identity.nodeId}`);
+    if (proxy) tui.system(`outbound dials go through SOCKS5 ${proxy.host}:${proxy.port}`);
     if (peers.size === 0) {
         /* Worth interrupting for. A node with an empty allowlist looks
            perfectly healthy and refuses every connection, which is an hour of
@@ -294,6 +307,13 @@ function usage(): void {
   serve [--port N] [--host H]       run the node with the terminal interface
         [--connect host:port]       …and dial a peer on startup
         [--nick name]
+        [--tor]                     dial through Tor (SOCKS5 127.0.0.1:9050)
+        [--proxy host:port]         dial through any SOCKS5 proxy
+
+Reaching a peer on another network:
+  --tor with a .onion address needs no port forwarding at either end.
+  A WireGuard mesh (Tailscale etc.) also works: bind --host to the mesh
+  address and dial the peer's mesh address directly.
 
 Config lives in ./config (override with IRCNODE_CONFIG).
 The listener binds ${DEFAULT_HOST} unless --host says otherwise.`);

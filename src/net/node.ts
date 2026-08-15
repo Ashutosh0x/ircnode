@@ -21,6 +21,7 @@ import type { Identity } from '../crypto/identity.ts';
 import { nodeIdFromPublicKey } from '../crypto/identity.ts';
 import type { PeerList } from '../acl/peers.ts';
 import { SecureLink } from './link.ts';
+import { socks5Connect } from './socks5.ts';
 import { isValidChannelName, type IrcMessage } from '../protocol/message.ts';
 
 export const DEFAULT_PORT = 6697;
@@ -70,12 +71,24 @@ export class IrcNode extends EventEmitter<NodeEvents> {
     #channels = new Set<string>(['#private-p2p']);
     #host = DEFAULT_HOST;
     #port = DEFAULT_PORT;
+    #proxy: { host: string; port: number } | null = null;
 
-    constructor(opts: { identity: Identity; peers: PeerList; nickname?: string }) {
+    constructor(opts: {
+        identity: Identity;
+        peers: PeerList;
+        nickname?: string;
+        /** SOCKS5 proxy for outbound dials — Tor's is 127.0.0.1:9050. */
+        proxy?: { host: string; port: number };
+    }) {
         super();
         this.identity = opts.identity;
         this.peers = opts.peers;
         this.nickname = opts.nickname || `node-${opts.identity.nodeId.slice(0, 8)}`;
+        this.#proxy = opts.proxy ?? null;
+    }
+
+    get proxy(): { host: string; port: number } | null {
+        return this.#proxy;
     }
 
     get host(): string { return this.#host; }
@@ -122,10 +135,25 @@ export class IrcNode extends EventEmitter<NodeEvents> {
 
     /* ============================================================= dial == */
 
-    /** Connect out to a peer. Resolves once the handshake has completed. */
+    /**
+     * Connect out to a peer. Resolves once the handshake has completed.
+     *
+     * With a proxy configured the TCP connection is made through it, which is
+     * what allows `.onion` destinations: those have no DNS entry, so a direct
+     * dial fails with ENOTFOUND, and Tor has to resolve the name itself.
+     * Everything above the socket is unchanged — the link cannot tell.
+     */
     async dial(host: string, port = DEFAULT_PORT): Promise<ConnectedPeer> {
+        const socket = this.#proxy
+            ? await socks5Connect({
+                proxyHost: this.#proxy.host,
+                proxyPort: this.#proxy.port,
+                destHost: host,
+                destPort: port,
+            })
+            : connect({ host, port });
+
         return new Promise((resolve, reject) => {
-            const socket = connect({ host, port });
             socket.setNoDelay(true);
             this.#track(socket);
 

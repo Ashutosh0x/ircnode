@@ -74,6 +74,74 @@ does not mean trusting back.
 
 ---
 
+## Reaching a peer on another network
+
+You at home, your friend in London. Neither of you can accept an inbound
+connection, because both sit behind a home router — and increasingly behind
+carrier-grade NAT, where port forwarding is not available at all.
+
+Three ways, in the order I would actually try them.
+
+### 1. A WireGuard mesh — works today, no code involved
+
+[Tailscale](https://tailscale.com/blog/how-nat-traversal-works) and similar
+handle NAT traversal for you and fall back to relaying when a direct path
+cannot be found. Both machines get a stable private address, and `ircnode`
+just dials it like any other host.
+
+```bash
+# both machines, once
+tailscale up
+tailscale ip -4          # e.g. 100.101.102.103
+
+# you
+./ircnode serve --host 100.101.102.103 --port 39840
+
+# your friend
+./ircnode serve --connect 100.101.102.103:39840
+```
+
+Bind to the **mesh address, not `0.0.0.0`** — that keeps the listener off your
+local network and off the public internet.
+
+### 2. Tor onion service — no port forwarding, no third-party mesh
+
+The best fit for this design. The Tor daemon makes only outbound connections,
+so it traverses NAT and CGNAT without any router configuration, and an onion
+address **is derived from a public key** — the same identity-is-the-key
+property `ircnode` already has one layer up.
+
+```bash
+# you: add to torrc, then restart tor
+HiddenServiceDir /var/lib/tor/ircnode/
+HiddenServicePort 39840 127.0.0.1:39840
+
+cat /var/lib/tor/ircnode/hostname     # <56-chars>.onion
+./ircnode serve --port 39840          # stays on loopback; tor reaches it
+
+# your friend
+./ircnode serve --tor --connect <56-chars>.onion:39840
+```
+
+`--tor` is shorthand for `--proxy 127.0.0.1:9050`; `--proxy` takes any SOCKS5
+address. A `.onion` **cannot** be dialled without one — it has no DNS entry, so
+a direct connection fails with `ENOTFOUND`. The hostname is sent to the proxy
+as a name, never resolved locally, so it is not leaked to your resolver.
+
+You can narrow it further with Tor's own
+[client authorization](https://community.torproject.org/onion-services/advanced/client-auth/),
+which makes the service unreachable without a credential — your allowlist
+enforced a layer lower, so unauthorised peers cannot even find the door.
+
+### 3. Port forwarding — simplest, if you control the router
+
+Forward a port to your machine, run with `--host 0.0.0.0`, and have your friend
+dial your public address. Add dynamic DNS if it changes. This is the only
+option that exposes a port to the internet; the allowlist still means an
+unauthorised peer gets nothing, but it is the least private of the three.
+
+---
+
 ## What it is not
 
 Not an IRC client. It will not connect to Libera or OFTC. It is a closed
@@ -228,8 +296,8 @@ captured 617 bytes in 8 writes
 - **The key file is written `0600`, which Windows does not enforce.** On NTFS
   that is a request, not a guarantee. The CLI says so at keygen rather than
   letting you assume otherwise.
-- **No NAT traversal, no peer exchange, no onion transport.** Peers are dialled
-  by address. Reasonable next steps, not things that quietly half-work.
+- **No peer exchange and no automatic hole punching.** Reachability is solved
+  by Tor or a WireGuard mesh (see above), not by NAT traversal built in here.
 - **Metadata is not hidden.** An observer cannot read your traffic but can see
   two addresses exchanging encrypted frames, and roughly how much.
 - **Not independently audited.** The construction is standard and the failure

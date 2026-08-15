@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const suites = ['crypto.test.ts', 'e2e.test.ts'];
+const suites = ['crypto.test.ts', 'socks5.test.ts', 'e2e.test.ts'];
 
 let total = 0, failed = 0;
 const broken: string[] = [];
