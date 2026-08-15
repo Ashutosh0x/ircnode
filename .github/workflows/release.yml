@@ -76,7 +76,13 @@ jobs:
           - os: macos-latest
             label: macos-arm64
             target: darwin
-          - os: macos-13
+          # Intel macOS is `macos-15-intel`, not `macos-13`. The 13 image was
+          # retired in December 2025, and a job asking for it here did not
+          # fail — it sat queued forever with no runner ever assigned. That is
+          # the worse failure: `release` needs the whole matrix, so one leg
+          # waiting on a runner that will never exist meant no tag could ever
+          # publish, silently, with every other job green.
+          - os: macos-15-intel
             label: macos-x64
             target: darwin
 
