@@ -1,0 +1,252 @@
+<div align="center">
+
+# ircnode
+
+**A private IRC node with a cryptographic door.**
+
+Runs on your machine, talks to nobody by default, and admits only peers whose
+Ed25519 public key you have explicitly added. Everything after the handshake is
+encrypted end to end.
+
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-native%20type%20stripping-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#zero-dependencies-on-purpose)
+[![Tests](https://img.shields.io/badge/tests-127%20passing-brightgreen)](#verified-not-asserted)
+[![Ed25519](https://img.shields.io/badge/identity-Ed25519-6E4AFF)](#how-a-connection-is-established)
+[![X25519](https://img.shields.io/badge/forward%20secrecy-X25519-6E4AFF)](#how-a-connection-is-established)
+[![ChaCha20-Poly1305](https://img.shields.io/badge/AEAD-ChaCha20--Poly1305-6E4AFF)](#after-the-handshake)
+[![SIGMA](https://img.shields.io/badge/handshake-SIGMA-1F6FEB)](#the-signature-covers-the-transcript-not-a-nonce)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+</div>
+
+---
+
+```
+ SECURE IRC NODE │ node 1cb35244…0638 │ ● LISTENING 127.0.0.1:39811 │ acl STRICT (1 authorised)
+────────────────────────────────────────────────────────────────────────────────────────────────
+ CHANNELS                         │ 17:07:25 SYSTEM  listening on 127.0.0.1:39811 — 1 authorised
+  ▸ #private-p2p                  │ 17:07:25 AUTH_OK bob [d8809310] verified — inbound
+    #ops                          │ 17:07:25 SYSTEM  bob joined #private-p2p
+                                  │ 17:07:28 <alice> hello bob, this link is end-to-end encrypted
+ PEERS (1)                        │ 17:07:29 <bob>   hello alice, confirmed on my side
+  ✔ bob ←                         │ 17:07:33 SYSTEM  joined #ops
+    d8809310c233…                 │
+ SECURITY                         │
+  allowlist  enforced             │
+  handshake  SIGMA                │
+  cipher     ChaCha20             │
+  forward sec X25519              │
+────────────────────────────────────────────────────────────────────────────────────────────────
+ [#private-p2p]
+ ^C quit │ /help commands │ /join #ch │ /peers │ E2E ChaCha20-Poly1305 │ 1 peer(s) online
+```
+
+*Not a mockup — a real frame captured from two nodes talking over loopback.*
+
+---
+
+## Quick start
+
+```bash
+node src/cli.ts keygen                        # create this node's identity
+node src/cli.ts id                            # print your public key — send it to your peer
+node src/cli.ts peers add <their-pubkey> bob  # authorise them
+node src/cli.ts serve --port 6697             # run it
+```
+
+Inside: `/connect host:port` · `/add` · `/revoke` · `/peers` · `/join #channel` · `/help`
+
+Both sides must add each other. Trust is not transitive here, and being trusted
+does not mean trusting back.
+
+---
+
+## What it is not
+
+Not an IRC client. It will not connect to Libera or OFTC. It is a closed
+network of machines you control: two people who have exchanged public keys can
+talk, nobody else can open a session, and nobody in between can read one.
+
+---
+
+## Where this came from
+
+Bitcoin 0.1–0.6 bootstrapped its peer-to-peer network over IRC. A node joined a
+channel between `#bitcoin00` and `#bitcoin99`, issued a `WHO`, and read other
+nodes' IP addresses out of their nicknames — each base58-encoded into the nick.
+It was disabled by default in 0.6 and **removed outright in 0.8.2**, after the
+IRC network it relied on (LFnet) shut down and took peer discovery with it.
+
+Four things were wrong with it. Each is a design constraint here:
+
+| | Bitcoin over IRC | ircnode |
+|---|---|---|
+| **Identity** | base58 of your IP, in a nickname | Ed25519 keypair; the nick commits to it |
+| **Proof** | none — set any nick, claim any address | signature over the session transcript |
+| **Privacy** | addresses broadcast in cleartext | ChaCha20-Poly1305; nothing readable on the wire |
+| **Access** | anyone who joins | closed allowlist; no key, no session |
+| **Failure** | one network; LFnet died, discovery died | every node listens *and* dials; no centre to lose |
+
+---
+
+## How a connection is established
+
+[SIGMA](https://hajji.org/en/crypto/key-exchange-protocols/the-sigma-protocols) —
+"SIGn-and-MAc", the construction behind IKEv2 and the ancestor of Noise's
+authenticated patterns.
+
+```
+1. I → R   ephemeral_i, nonce_i, version
+2. R → I   ephemeral_r, nonce_r
+             both derive K = X25519(e, E), then HKDF → directional keys
+3. R → I   static_r, Sign_r(H(transcript)), MAC(km_r, static_r)
+4. I → R   static_i, Sign_i(H(transcript)), MAC(km_i, static_i)
+5. R → I   sealed "accepted"
+```
+
+### The signature covers the transcript, not a nonce
+
+This is the part that is easy to get wrong, and getting it wrong is not a small
+mistake.
+
+The design people usually reach for is: *server sends a random nonce, client
+signs `nonce ‖ server_id ‖ timestamp`*. It looks sound. It has a named flaw —
+**identity misbinding**, the weakness that sank Station-to-Station and that
+SIGMA exists to fix.
+
+The signature proves someone signed a nonce, but nothing ties it to the key
+exchange the session will actually use. So a party who is themselves authorised
+can relay a signature from one exchange into another and end up sitting between
+two peers who each believe they are talking to the other. What the client signed
+was true — it just never said *which conversation* it belonged to.
+
+Signing `H(protocol ‖ version ‖ both ephemerals ‖ both nonces)` makes a
+signature valid for exactly one exchange. The MAC over the signer's identity,
+keyed from the shared secret, proves they actually derived that key rather than
+replaying someone else's signature into the flow.
+
+Two further details that matter:
+
+- **The responder authenticates first.** An unauthorised caller learns nothing
+  about who is listening beyond the fact that something is, and is dropped
+  before it ever names itself.
+- **Message 5 exists** because without it the initiator finishes the moment it
+  *sends* its auth — before the responder has checked the allowlist. An
+  unauthorised peer would briefly report itself connected, then be torn down.
+  The sealed accept frame means "connected" means connected.
+
+Forward secrecy comes from the ephemeral X25519 keys. They die with the
+connection, so compromising a long-term key later does not decrypt traffic
+recorded earlier.
+
+## After the handshake
+
+ChaCha20-Poly1305, separate keys per direction, nonce = a 64-bit counter.
+
+Counters rather than random nonces on purpose: at 96 bits, random nonces carry a
+real birthday-collision risk over a long-lived connection and nothing detects
+one. A counter cannot repeat as long as it never wraps, so it is checked against
+its ceiling before every use and the session retires rather than rolls over.
+Reusing a `(key, nonce)` pair with any stream cipher hands over the XOR of the
+plaintexts — not a degradation, a total break.
+
+The sequence number is authenticated as associated data and the receiver
+requires exactly the next one, so dropping, reordering or replaying a frame is
+detected rather than silently changing what a conversation said.
+
+---
+
+## Zero dependencies, on purpose
+
+Node 22 ships Ed25519, X25519, ChaCha20-Poly1305, HKDF and `timingSafeEqual`,
+and runs TypeScript natively — so **the code you audit is byte-for-byte the code
+that executes.** There is no build step and no transpiled artifact.
+
+Nothing that touches a private key was written by a third party. For a tool
+whose whole premise is a closed trust boundary, the supply chain is the attack
+surface worth removing — a key-handling process with 100 transitive packages has
+100 authors.
+
+This is also why the interface is `readline` + ANSI rather than Ink: React in
+the terminal would bring roughly a hundred packages, and JSX would reintroduce a
+build step.
+
+---
+
+## Verified, not asserted
+
+```console
+$ npm test
+PASS  crypto.test.ts       93 checks
+PASS  e2e.test.ts          34 checks
+
+2 suites, 127 checks, 0 failed
+```
+
+Most are **negative**. A handshake that works between two honest parties proves
+very little; what matters is that it *fails* correctly:
+
+- an auth message from a different exchange is refused — *identity misbinding*
+- a valid signature with no allowlist entry is refused
+- one-way trust is not enough; both sides must authorise
+- revoking a peer drops the **live session**, not just the next handshake
+- a low-order X25519 key is refused
+- a replayed or reordered frame is refused
+- CRLF in any IRC parameter is refused — *message injection*
+- a hostile length prefix is refused before anything is allocated
+
+The wire was checked directly, by tapping every byte handed to the kernel:
+
+```
+captured 617 bytes in 8 writes
+  plaintext canary visible?   no
+  "PRIVMSG" visible?          no
+  "#private-p2p" visible?     no
+  node id visible?            no
+```
+
+---
+
+## Honest limits
+
+- **Binds `127.0.0.1` by default.** Zero-trust makes a wider bind survivable,
+  but a default that exposes a port to your network will surprise someone.
+  `--host` is deliberate.
+- **The key file is written `0600`, which Windows does not enforce.** On NTFS
+  that is a request, not a guarantee. The CLI says so at keygen rather than
+  letting you assume otherwise.
+- **No NAT traversal, no peer exchange, no onion transport.** Peers are dialled
+  by address. Reasonable next steps, not things that quietly half-work.
+- **Metadata is not hidden.** An observer cannot read your traffic but can see
+  two addresses exchanging encrypted frames, and roughly how much.
+- **Not independently audited.** The construction is standard and the failure
+  modes are tested, but that is not review by someone who did not write it.
+
+---
+
+## Layout
+
+| Path | What lives there |
+|---|---|
+| `src/crypto/identity.ts` | Ed25519 keys, node ids, domain-separated signing |
+| `src/crypto/handshake.ts` | SIGMA mutual auth over X25519 |
+| `src/crypto/session.ts` | ChaCha20-Poly1305 with counter nonces |
+| `src/acl/peers.ts` | the allowlist, and this node's key on disk |
+| `src/protocol/framing.ts` | length-prefixed frames over a TCP stream |
+| `src/protocol/message.ts` | IRC grammar with IRCv3 tags, injection-safe |
+| `src/net/link.ts` | one authenticated connection |
+| `src/net/node.ts` | listener, dialler, channels |
+| `src/ui/tui.ts` | the terminal interface |
+| `src/cli.ts` | entry point |
+
+```bash
+npm test          # 127 checks, no network required for the crypto suite
+npm run typecheck # tsc --noEmit; nothing is emitted, ever
+```
+
+---
+
+<div align="center">
+<sub>MIT · built with Node's own crypto and nothing else</sub>
+</div>

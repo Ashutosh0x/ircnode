@@ -1,0 +1,14 @@
+node_modules/
+
+# Node identity. This file is the node's private key — anyone holding it can
+# impersonate this node to every peer that has authorised it. It must never
+# reach a repository, a backup that syncs, or a paste.
+config/node-key.json
+config/*.key
+*.pem
+
+# Peer list is not secret (public keys only) but is deployment-specific.
+config/allowed-peers.json
+
+.DS_Store
+*.log

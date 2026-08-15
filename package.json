@@ -1,0 +1,26 @@
+{
+  "name": "irc-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private, zero-trust IRC node. Only peers whose Ed25519 public keys you have explicitly authorised can connect; every byte after the handshake is encrypted end to end.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "bin": {
+    "ircnode": "./src/cli.ts"
+  },
+  "scripts": {
+    "node": "node src/cli.ts",
+    "keygen": "node src/cli.ts keygen",
+    "serve": "node src/cli.ts serve",
+    "connect": "node src/cli.ts connect",
+    "peers": "node src/cli.ts peers",
+    "test": "node test/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

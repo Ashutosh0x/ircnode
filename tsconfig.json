@@ -1,0 +1,32 @@
+{
+  // Type CHECKING only. Node 22.18 strips types natively, so nothing here
+  // emits anything — `tsc --noEmit` is a linter, and `node src/cli.ts` is how
+  // the code actually runs. That keeps the thing you audit and the thing you
+  // execute byte-identical, which for a security tool is worth more than the
+  // conveniences a build step would buy.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+
+    // Node's type stripping cannot handle constructs that need code
+    // generation. Erasable-syntax-only makes tsc reject them at check time
+    // rather than letting node fail at run time.
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
