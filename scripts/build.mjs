@@ -25,6 +25,15 @@ import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, rmSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
+/* esbuild's JS API rather than its CLI.
+   `node_modules/esbuild/bin/esbuild` is the NATIVE binary on Linux and macOS —
+   running it through `node` reads an ELF/Mach-O file as JavaScript and dies on
+   the first byte with "SyntaxError: Invalid or unexpected token". Windows is
+   the exception: there esbuild installs a JS shim at that path, so the CLI
+   approach worked locally and only failed in CI. The API has no such
+   platform split. */
+import { build as esbuild } from 'esbuild';
+
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = join(ROOT, 'build');
 
@@ -55,18 +64,21 @@ mkdirSync(OUT, { recursive: true });
 /* CommonJS output: SEA loads the main script through the CJS loader, so an
    ESM bundle fails at runtime with an import-outside-module error rather than
    at build time. */
-execFileSync(process.execPath, [
-    join(ROOT, 'node_modules', 'esbuild', 'bin', 'esbuild'),
-    join(ROOT, 'src', 'cli.ts'),
-    '--bundle',
-    '--platform=node',
-    '--target=node22',
-    '--format=cjs',
-    `--outfile=${join(OUT, 'bundle.cjs')}`,
-    `--define:__IRCNODE_VERSION__="${version}"`,
-    `--define:__IRCNODE_COMMIT__="${commit}"`,
-    '--log-level=warning',
-], { cwd: ROOT, stdio: 'inherit' });
+await esbuild({
+    entryPoints: [join(ROOT, 'src', 'cli.ts')],
+    bundle: true,
+    platform: 'node',
+    target: 'node22',
+    format: 'cjs',
+    outfile: join(OUT, 'bundle.cjs'),
+    // JSON.stringify so the replacement is a valid JS string literal, which is
+    // what --define substitutes textually.
+    define: {
+        __IRCNODE_VERSION__: JSON.stringify(version),
+        __IRCNODE_COMMIT__: JSON.stringify(commit),
+    },
+    logLevel: 'warning',
+});
 
 console.log('  bundled  build/bundle.cjs');
 
